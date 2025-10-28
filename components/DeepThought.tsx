@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { deepThought } from '../services/geminiService';
 import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
+import CopyButton from './CopyButton';
 
 const DeepThought: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('');
@@ -47,8 +48,11 @@ const DeepThought: React.FC = () => {
 
         {(isLoading || response) && (
           <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white">Generated Response</h3>
-            <div className="mt-2 bg-gray-700 p-4 rounded-md min-h-[150px]">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold text-white">Generated Response</h3>
+              {response && !isLoading && <CopyButton textToCopy={response} />}
+            </div>
+            <div className="bg-gray-700 p-4 rounded-md min-h-[150px]">
               {isLoading ? (
                 <div className="flex flex-col justify-center items-center h-full text-center">
                   <Spinner size="lg" />

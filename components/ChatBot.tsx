@@ -5,6 +5,7 @@ import type { ChatMessage } from '../types';
 import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
 import { UserIcon, GeminiLogoIcon } from './icons/Icons';
+import CopyButton from './CopyButton';
 
 const ChatBot: React.FC = () => {
   const [chat, setChat] = useState<Chat | null>(null);
@@ -66,12 +67,18 @@ const ChatBot: React.FC = () => {
       <div className="flex-grow bg-gray-800 rounded-lg shadow-lg flex flex-col p-4">
         <div className="flex-grow overflow-y-auto pr-2 space-y-4">
           {messages.map((msg, index) => (
-            <div key={index} className={`flex items-start gap-3 ${msg.role === 'user' ? 'justify-end' : ''}`}>
-              {msg.role === 'model' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center"><GeminiLogoIcon size={20} /></div>}
+            <div key={index} className={`group flex items-start gap-3 ${msg.role === 'user' ? 'justify-end flex-row-reverse' : ''}`}>
+              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.role === 'user' ? 'bg-gray-600' : 'bg-blue-500'}`}>
+                {msg.role === 'user' ? <UserIcon /> : <GeminiLogoIcon size={20} />}
+              </div>
               <div className={`px-4 py-2 rounded-lg max-w-md ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
                 <p className="whitespace-pre-wrap">{msg.parts[0].text}</p>
               </div>
-              {msg.role === 'user' && <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center"><UserIcon /></div>}
+              {msg.role === 'model' && (
+                <div className="self-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <CopyButton textToCopy={msg.parts[0].text} />
+                </div>
+              )}
             </div>
           ))}
           {isLoading && (

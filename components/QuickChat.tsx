@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { quickChat } from '../services/geminiService';
 import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
+import CopyButton from './CopyButton';
 
 const QuickChat: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('');
@@ -52,8 +53,11 @@ const QuickChat: React.FC = () => {
 
         {(isLoading || response) && (
           <div className="mt-6">
-            <h3 className="text-lg font-semibold text-white">Response</h3>
-            <div className="mt-2 bg-gray-700 p-4 rounded-md min-h-[80px]">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-semibold text-white">Response</h3>
+              {response && !isLoading && <CopyButton textToCopy={response} />}
+            </div>
+            <div className="bg-gray-700 p-4 rounded-md min-h-[80px]">
               {isLoading ? (
                 <div className="flex justify-center items-center h-full">
                   <Spinner />
