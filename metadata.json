@@ -1,0 +1,5 @@
+{
+  "name": "Gemini AI Multi-Tool",
+  "description": "An all-in-one application showcasing the power of Google's Gemini models. Features include image analysis, fast chat, a conversational bot, deep thinking mode for complex queries, and high-quality image generation.",
+  "requestFramePermissions": []
+}
