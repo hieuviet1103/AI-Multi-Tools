@@ -16,6 +16,8 @@ const ImageAnalysis: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [objectsToDetect, setObjectsToDetect] = useState<string>('');
+  const [imageDimensions, setImageDimensions] = useState<{width: number; height: number} | null>(null);
+
 
   const resetState = () => {
     setImage(null);
@@ -23,6 +25,7 @@ const ImageAnalysis: React.FC = () => {
     setAnalysis(null);
     setCroppedObjectImages([]);
     setError('');
+    setImageDimensions(null);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,6 +88,7 @@ const ImageAnalysis: React.FC = () => {
     setIsLoading(true);
     setAnalysis(null);
     setCroppedObjectImages([]);
+    setImageDimensions(null);
     setError('');
 
     let finalPrompt = prompt;
@@ -225,6 +229,61 @@ const ImageAnalysis: React.FC = () => {
                 renderHighlightedAnalysis()
               )}
             </div>
+          </div>
+        )}
+
+        {analysis && analysis.detectedObjects.length > 0 && image && !isLoading && (
+          <div className="mt-6">
+              <h3 className="text-lg font-semibold text-white">Object Locations</h3>
+              <div className="relative mt-2 inline-block bg-gray-700 p-2 rounded-lg">
+                  <img 
+                      src={image} 
+                      alt="Analysis subject" 
+                      className="max-w-full h-auto rounded-md"
+                      onLoad={(e) => {
+                          setImageDimensions({ 
+                              width: e.currentTarget.offsetWidth, 
+                              height: e.currentTarget.offsetHeight 
+                          });
+                      }} 
+                  />
+                  {imageDimensions && analysis.detectedObjects.map((obj, index) => {
+                      const boxStyle: React.CSSProperties = {
+                          position: 'absolute',
+                          left: `${obj.boundingBox.x * imageDimensions.width}px`,
+                          top: `${obj.boundingBox.y * imageDimensions.height}px`,
+                          width: `${obj.boundingBox.width * imageDimensions.width}px`,
+                          height: `${obj.boundingBox.height * imageDimensions.height}px`,
+                          border: '2px solid #ef4444',
+                          backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                      };
+                      
+                      let topPos = obj.boundingBox.y * imageDimensions.height - 24;
+                      if (topPos < 0) {
+                          topPos = obj.boundingBox.y * imageDimensions.height + 2;
+                      }
+
+                      const labelStyle: React.CSSProperties = {
+                          position: 'absolute',
+                          left: `${obj.boundingBox.x * imageDimensions.width}px`,
+                          top: `${topPos}px`,
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          padding: '2px 6px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          borderRadius: '4px',
+                          whiteSpace: 'nowrap',
+                      };
+                      
+                      return (
+                          <div key={index}>
+                              <div style={boxStyle} />
+                              <div style={labelStyle}>{obj.name}</div>
+                          </div>
+                      );
+                  })}
+              </div>
           </div>
         )}
 
