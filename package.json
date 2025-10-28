@@ -13,7 +13,8 @@
     "react-dom": "^18.2.0",
     "@google/genai": "^1.27.0",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^4.2.1"
+    "react-leaflet": "^4.2.1",
+    "idb": "^8.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

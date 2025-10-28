@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import type { AspectRatio, MapsSearchResponse, GroundingChunk, PlaceWithCoords, GroundingSearchResponse, VideoAspectRatio } from '../types';
+import type { AspectRatio, MapsSearchResponse, GroundingChunk, PlaceWithCoords, GroundingSearchResponse, VideoAspectRatio, ImageAnalysisResponse } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
@@ -8,7 +8,7 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export async function analyzeImage(prompt: string, imageBase64: string, mimeType: string): Promise<string> {
+export async function analyzeImage(prompt: string, imageBase64: string, mimeType: string): Promise<ImageAnalysisResponse> {
   try {
     const imagePart = {
       inlineData: {
@@ -21,12 +21,49 @@ export async function analyzeImage(prompt: string, imageBase64: string, mimeType
     const response: GenerateContentResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: { parts: [textPart, imagePart] },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    description: { type: Type.STRING, description: "A detailed description of the image content." },
+                    detectedObjects: {
+                        type: Type.ARRAY,
+                        description: "A list of objects found in the image, based on the user's request.",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING, description: "The name of the detected object." },
+                                boundingBox: {
+                                    type: Type.OBJECT,
+                                    description: "Normalized coordinates (0-1) of the bounding box. x and y are the top-left corner.",
+                                    properties: {
+                                        x: { type: Type.NUMBER },
+                                        y: { type: Type.NUMBER },
+                                        width: { type: Type.NUMBER },
+                                        height: { type: Type.NUMBER },
+                                    },
+                                    required: ["x", "y", "width", "height"],
+                                },
+                            },
+                            required: ["name", "boundingBox"],
+                        },
+                    },
+                },
+                required: ["description", "detectedObjects"],
+            },
+        },
     });
 
-    return response.text;
+    const jsonText = response.text.trim();
+    const parsedJson = JSON.parse(jsonText);
+    return parsedJson as ImageAnalysisResponse;
   } catch (error) {
     console.error("Error analyzing image:", error);
-    return "Sorry, I couldn't analyze the image. Please try again.";
+    return {
+        description: "Sorry, I couldn't analyze the image. The model may have returned an invalid response. Please try again.",
+        detectedObjects: []
+    };
   }
 }
 
@@ -202,4 +239,20 @@ export async function checkVideoOperationStatus(operation: any) {
     // Per guidelines, create a new instance for Veo models.
     const videoAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return await videoAI.operations.getVideosOperation({ operation });
+}
+
+export async function generateChatTitle(firstPrompt: string): Promise<string> {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-flash-lite-latest',
+            contents: firstPrompt,
+            config: {
+                systemInstruction: `Generate a very short, concise title (3-5 words max) for a conversation that starts with the following prompt. Do not add quotes or any other formatting.`,
+            }
+        });
+        return response.text.replace(/"/g, '').trim();
+    } catch (error) {
+        console.error("Error generating title:", error);
+        return "New Chat";
+    }
 }

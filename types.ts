@@ -51,3 +51,37 @@ export interface PlaceWithCoords {
   latitude: number;
   longitude: number;
 }
+
+// Types for Chat History
+export interface ChatSession {
+  id: string; // UUID
+  deviceId: string;
+  title: string;
+  timestamp: number; // Unix timestamp
+}
+
+export interface HistoryMessage {
+  id?: number; // Auto-incrementing primary key
+  sessionId: string;
+  role: 'user' | 'model';
+  content: string;
+  timestamp: number;
+}
+
+// Types for structured image analysis
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DetectedObject {
+  name: string;
+  boundingBox: BoundingBox;
+}
+
+export interface ImageAnalysisResponse {
+  description: string;
+  detectedObjects: DetectedObject[];
+}

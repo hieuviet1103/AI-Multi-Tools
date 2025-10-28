@@ -5,15 +5,25 @@ import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
 import { UploadIcon } from './icons/Icons';
 import Alert from './Alert';
+import type { ImageAnalysisResponse, DetectedObject } from '../types';
 
 const ImageAnalysis: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('Describe this image in detail. If there are people, describe their expressions. If there is text, transcribe it.');
   const [image, setImage] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [analysis, setAnalysis] = useState<string>('');
+  const [analysis, setAnalysis] = useState<ImageAnalysisResponse | null>(null);
+  const [croppedObjectImages, setCroppedObjectImages] = useState<{name: string, dataUrl: string}[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [objectsToDetect, setObjectsToDetect] = useState<string>('');
+
+  const resetState = () => {
+    setImage(null);
+    setFile(null);
+    setAnalysis(null);
+    setCroppedObjectImages([]);
+    setError('');
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
@@ -22,16 +32,50 @@ const ImageAnalysis: React.FC = () => {
           setError("File size exceeds 4MB. Please choose a smaller image.");
           return;
       }
+      resetState();
       setFile(selectedFile);
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);
-        setError('');
-        setAnalysis('');
       };
       reader.readAsDataURL(selectedFile);
     }
   };
+
+  const cropAndSetObjects = useCallback((
+    imageDataUrl: string,
+    objects: DetectedObject[],
+    mimeType: string
+  ) => {
+      const img = new Image();
+      img.onload = () => {
+          const croppedResults: {name: string, dataUrl: string}[] = [];
+          objects.forEach(obj => {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+
+              const { x, y, width, height } = obj.boundingBox;
+              const sx = x * img.naturalWidth;
+              const sy = y * img.naturalHeight;
+              const sWidth = width * img.naturalWidth;
+              const sHeight = height * img.naturalHeight;
+
+              if (sWidth < 1 || sHeight < 1) return; // Skip invalid boxes
+
+              canvas.width = sWidth;
+              canvas.height = sHeight;
+
+              ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
+              croppedResults.push({ name: obj.name, dataUrl: canvas.toDataURL(mimeType) });
+          });
+          setCroppedObjectImages(croppedResults);
+      };
+      img.onerror = () => {
+          setError("Could not load the uploaded image for processing.");
+      };
+      img.src = imageDataUrl;
+  }, []);
 
   const handleAnalyze = useCallback(async () => {
     if (!file || !prompt) {
@@ -39,12 +83,15 @@ const ImageAnalysis: React.FC = () => {
       return;
     }
     setIsLoading(true);
-    setAnalysis('');
+    setAnalysis(null);
+    setCroppedObjectImages([]);
     setError('');
 
     let finalPrompt = prompt;
     if (objectsToDetect.trim()) {
-      finalPrompt += `\n\nIn addition to the above, please specifically look for and describe the following objects if they are present: ${objectsToDetect}.`;
+      finalPrompt += `\n\nFor the objects listed here: "${objectsToDetect}", provide their name and a normalized bounding box (x, y, width, height) in the 'detectedObjects' array. The x and y coordinates should represent the top-left corner of the box. Only include objects that are clearly visible in the image.`;
+    } else {
+      finalPrompt += `\n\nPlease also return an empty 'detectedObjects' array.`;
     }
 
     try {
@@ -54,6 +101,9 @@ const ImageAnalysis: React.FC = () => {
         if (base64String) {
           const result = await analyzeImage(finalPrompt, base64String, file.type);
           setAnalysis(result);
+          if (image && result.detectedObjects && result.detectedObjects.length > 0) {
+            cropAndSetObjects(image, result.detectedObjects, file.type);
+          }
         } else {
             setError("Could not read the image file.");
         }
@@ -64,21 +114,21 @@ const ImageAnalysis: React.FC = () => {
       setError('An error occurred during analysis.');
       setIsLoading(false);
     }
-  }, [file, prompt, objectsToDetect]);
+  }, [file, prompt, objectsToDetect, image, cropAndSetObjects]);
   
   const renderHighlightedAnalysis = () => {
-    if (!analysis) return null;
+    if (!analysis?.description) return null;
 
     const highlightTerms = objectsToDetect.split(',')
       .map(term => term.trim())
       .filter(term => term.length > 0);
 
     if (highlightTerms.length === 0) {
-      return <p className="text-gray-300">{analysis}</p>;
+      return <p className="text-gray-300">{analysis.description}</p>;
     }
 
     const regex = new RegExp(`(${highlightTerms.map(term => term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})`, 'gi');
-    const parts = analysis.split(regex);
+    const parts = analysis.description.split(regex);
 
     return (
       <p className="text-gray-300">
@@ -91,12 +141,11 @@ const ImageAnalysis: React.FC = () => {
     );
   };
 
-
   return (
     <div className="max-w-4xl mx-auto">
       <ToolHeader 
         title="Image Analysis & Object Detection"
-        description="Upload an image, refine your query with contextual text, and specify objects to find. Ask Gemini to find a face, read text, or describe the scene."
+        description="Upload an image, ask a question, and specify objects to detect. Gemini will describe the scene and visually extract the objects for you."
       />
       
       <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
@@ -123,7 +172,7 @@ const ImageAnalysis: React.FC = () => {
               </div>
             </div>
             {image && 
-              <button onClick={() => {setImage(null); setFile(null); setAnalysis('')}} className="mt-2 text-sm text-red-400 hover:text-red-500">
+              <button onClick={resetState} className="mt-2 text-sm text-red-400 hover:text-red-500">
                 Remove Image
               </button>
             }
@@ -175,6 +224,20 @@ const ImageAnalysis: React.FC = () => {
               ) : (
                 renderHighlightedAnalysis()
               )}
+            </div>
+          </div>
+        )}
+
+        {croppedObjectImages.length > 0 && !isLoading && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold text-white">Detected Objects</h3>
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {croppedObjectImages.map((cropped, index) => (
+                <div key={index} className="bg-gray-700 p-2 rounded-lg text-center flex flex-col items-center">
+                  <img src={cropped.dataUrl} alt={cropped.name} className="w-full h-auto object-contain rounded-md mb-2 flex-grow" />
+                  <p className="text-sm text-gray-300 capitalize self-end w-full">{cropped.name}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
