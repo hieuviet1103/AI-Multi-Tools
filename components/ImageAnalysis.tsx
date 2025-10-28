@@ -235,16 +235,22 @@ const ImageAnalysis: React.FC = () => {
         {analysis && analysis.detectedObjects.length > 0 && image && !isLoading && (
           <div className="mt-6">
               <h3 className="text-lg font-semibold text-white">Object Locations</h3>
-              <div className="relative mt-2 inline-block bg-gray-700 p-2 rounded-lg">
+              <div className="relative mt-2 w-fit mx-auto bg-gray-700 p-2 rounded-lg">
                   <img 
                       src={image} 
                       alt="Analysis subject" 
-                      className="max-w-full h-auto rounded-md"
+                      className="max-w-full h-auto rounded-md block"
                       onLoad={(e) => {
-                          setImageDimensions({ 
-                              width: e.currentTarget.offsetWidth, 
-                              height: e.currentTarget.offsetHeight 
-                          });
+                          // Deferring the dimension measurement slightly ensures the browser has
+                          // completed its layout calculations, leading to more accurate box placement.
+                          setTimeout(() => {
+                            if (e.currentTarget) {
+                              setImageDimensions({ 
+                                  width: e.currentTarget.offsetWidth, 
+                                  height: e.currentTarget.offsetHeight 
+                              });
+                            }
+                          }, 0);
                       }} 
                   />
                   {imageDimensions && analysis.detectedObjects.map((obj, index) => {

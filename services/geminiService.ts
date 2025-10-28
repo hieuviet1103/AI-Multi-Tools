@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, Modality } from "@google/genai";
 import type { AspectRatio, MapsSearchResponse, GroundingChunk, PlaceWithCoords, GroundingSearchResponse, VideoAspectRatio, ImageAnalysisResponse } from '../types';
 
 if (!process.env.API_KEY) {
@@ -254,5 +254,27 @@ export async function generateChatTitle(firstPrompt: string): Promise<string> {
     } catch (error) {
         console.error("Error generating title:", error);
         return "New Chat";
+    }
+}
+
+export async function generateSpeech(text: string): Promise<string | null> {
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Kore' },
+                    },
+                },
+            },
+        });
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        return base64Audio ?? null;
+    } catch (error) {
+        console.error("Error generating speech:", error);
+        throw new Error("Failed to generate speech. Please try again.");
     }
 }
