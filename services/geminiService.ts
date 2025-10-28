@@ -8,19 +8,31 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export async function analyzeImage(prompt: string, imageBase64: string, mimeType: string): Promise<ImageAnalysisResponse> {
+export async function analyzeImage(
+  prompt: string, 
+  imageBase64: string, 
+  mimeType: string,
+  objectImageBase64?: string,
+  objectImageMimeType?: string
+): Promise<ImageAnalysisResponse> {
   try {
-    const imagePart = {
-      inlineData: {
-        data: imageBase64,
-        mimeType,
-      },
-    };
     const textPart = { text: prompt };
+    const mainImagePart = {
+      inlineData: { data: imageBase64, mimeType },
+    };
+    
+    const parts: any[] = [textPart, mainImagePart];
+
+    if (objectImageBase64 && objectImageMimeType) {
+      const objectImagePart = {
+        inlineData: { data: objectImageBase64, mimeType: objectImageMimeType },
+      };
+      parts.push(objectImagePart);
+    }
 
     const response: GenerateContentResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: { parts: [textPart, imagePart] },
+        contents: { parts: parts },
         config: {
             responseMimeType: "application/json",
             responseSchema: {

@@ -11,11 +11,12 @@ const ImageAnalysis: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('Describe this image in detail. If there are people, describe their expressions. If there is text, transcribe it.');
   const [image, setImage] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [objectImageFile, setObjectImageFile] = useState<File | null>(null);
+  const [objectImagePreview, setObjectImagePreview] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<ImageAnalysisResponse | null>(null);
   const [croppedObjectImages, setCroppedObjectImages] = useState<{name: string, dataUrl: string}[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [objectsToDetect, setObjectsToDetect] = useState<string>('');
   const [imageDimensions, setImageDimensions] = useState<{width: number; height: number} | null>(null);
 
 
@@ -26,6 +27,8 @@ const ImageAnalysis: React.FC = () => {
     setCroppedObjectImages([]);
     setError('');
     setImageDimensions(null);
+    setObjectImageFile(null);
+    setObjectImagePreview(null);
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,6 +47,19 @@ const ImageAnalysis: React.FC = () => {
       reader.readAsDataURL(selectedFile);
     }
   };
+  
+  const handleObjectFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (selectedFile) {
+        if(selectedFile.size > 4 * 1024 * 1024) { // 4MB limit
+            setError("Object image size exceeds 4MB. Please choose a smaller image.");
+            return;
+        }
+        setObjectImageFile(selectedFile);
+        setObjectImagePreview(URL.createObjectURL(selectedFile));
+    }
+  };
+
 
   const cropAndSetObjects = useCallback((
     imageDataUrl: string,
@@ -82,7 +98,7 @@ const ImageAnalysis: React.FC = () => {
 
   const handleAnalyze = useCallback(async () => {
     if (!file || !prompt) {
-      setError('Please upload an image and provide a prompt.');
+      setError('Please upload a main image and provide a prompt.');
       return;
     }
     setIsLoading(true);
@@ -92,40 +108,55 @@ const ImageAnalysis: React.FC = () => {
     setError('');
 
     let finalPrompt = prompt;
-    if (objectsToDetect.trim()) {
-      finalPrompt += `\n\nFor the objects listed here: "${objectsToDetect}", provide their name and a normalized bounding box (x, y, width, height) in the 'detectedObjects' array. The x and y coordinates should represent the top-left corner of the box. Only include objects that are clearly visible in the image.`;
+    if (objectImageFile) {
+        finalPrompt = `Analyze the first image (the main scene). The second image shows a specific object. Find all instances of this object in the first image. For each instance found, provide its name and a normalized bounding box in the 'detectedObjects' array. In the description, describe the main scene, paying special attention to the context of the found object(s). If no similar object is found, return an empty 'detectedObjects' array.`;
     } else {
-      finalPrompt += `\n\nPlease also return an empty 'detectedObjects' array.`;
+        finalPrompt += `\n\nPlease also return an empty 'detectedObjects' array.`;
     }
 
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = (reader.result as string).split(',')[1];
-        if (base64String) {
-          const result = await analyzeImage(finalPrompt, base64String, file.type);
-          setAnalysis(result);
-          if (image && result.detectedObjects && result.detectedObjects.length > 0) {
-            cropAndSetObjects(image, result.detectedObjects, file.type);
-          }
-        } else {
-            setError("Could not read the image file.");
+        const fileToB64 = (f: File) => new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const result = reader.result as string;
+                resolve(result.split(',')[1]);
+            };
+            reader.onerror = (err) => reject(err);
+            reader.readAsDataURL(f);
+        });
+
+        const mainImageBase64 = await fileToB64(file);
+        let objectImageBase64: string | undefined = undefined;
+
+        if (objectImageFile) {
+            objectImageBase64 = await fileToB64(objectImageFile);
         }
-        setIsLoading(false);
-      };
-      reader.readAsDataURL(file);
+
+        const result = await analyzeImage(
+            finalPrompt,
+            mainImageBase64,
+            file.type,
+            objectImageBase64,
+            objectImageFile?.type
+        );
+        
+        setAnalysis(result);
+        if (image && result.detectedObjects && result.detectedObjects.length > 0) {
+            cropAndSetObjects(image, result.detectedObjects, file.type);
+        }
+        
     } catch (err) {
       setError('An error occurred during analysis.');
-      setIsLoading(false);
+    } finally {
+        setIsLoading(false);
     }
-  }, [file, prompt, objectsToDetect, image, cropAndSetObjects]);
+  }, [file, prompt, objectImageFile, image, cropAndSetObjects]);
   
   const renderHighlightedAnalysis = () => {
     if (!analysis?.description) return null;
 
-    const highlightTerms = objectsToDetect.split(',')
-      .map(term => term.trim())
-      .filter(term => term.length > 0);
+    const highlightTerms = analysis.detectedObjects.map(obj => obj.name)
+      .filter((name, index, self) => self.indexOf(name) === index); // Unique names
 
     if (highlightTerms.length === 0) {
       return <p className="text-gray-300">{analysis.description}</p>;
@@ -148,71 +179,86 @@ const ImageAnalysis: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto">
       <ToolHeader 
-        title="Image Analysis & Object Detection"
-        description="Upload an image, ask a question, and specify objects to detect. Gemini will describe the scene and visually extract the objects for you."
+        title="Image Analysis & Visual Search"
+        description="Upload an image and ask a question, or upload a second image to find similar objects within the first."
       />
       
       <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
         <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="file-upload" className="block text-sm font-medium text-gray-300 mb-2">Upload Image</label>
-            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-600 border-dashed rounded-md">
-              <div className="space-y-1 text-center">
-                {image ? (
-                  <img src={image} alt="Preview" className="mx-auto h-48 w-auto rounded-md object-contain" />
-                ) : (
-                  <>
-                    <UploadIcon />
-                    <div className="flex text-sm text-gray-400">
-                      <label htmlFor="file-upload" className="relative cursor-pointer bg-gray-800 rounded-md font-medium text-blue-400 hover:text-blue-500 focus-within:outline-none">
-                        <span>Upload a file</span>
-                        <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleFileChange} />
-                      </label>
-                      <p className="pl-1">or drag and drop</p>
-                    </div>
-                    <p className="text-xs text-gray-500">PNG, JPG, GIF up to 4MB</p>
-                  </>
-                )}
-              </div>
+            {/* Main Image Uploader */}
+            <div>
+                <label htmlFor="file-upload" className="block text-sm font-medium text-gray-300 mb-2">Main Image</label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-600 border-dashed rounded-md">
+                <div className="space-y-1 text-center">
+                    {image ? (
+                    <img src={image} alt="Preview" className="mx-auto h-48 w-auto rounded-md object-contain" />
+                    ) : (
+                    <>
+                        <UploadIcon />
+                        <div className="flex text-sm text-gray-400">
+                        <label htmlFor="file-upload" className="relative cursor-pointer bg-gray-800 rounded-md font-medium text-blue-400 hover:text-blue-500 focus-within:outline-none">
+                            <span>Upload a file</span>
+                            <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/*" onChange={handleFileChange} />
+                        </label>
+                        <p className="pl-1">or drag and drop</p>
+                        </div>
+                        <p className="text-xs text-gray-500">PNG, JPG, GIF up to 4MB</p>
+                    </>
+                    )}
+                </div>
+                </div>
+                {image && 
+                <button onClick={resetState} className="mt-2 text-sm text-red-400 hover:text-red-500">
+                    Remove Image
+                </button>
+                }
             </div>
-            {image && 
-              <button onClick={resetState} className="mt-2 text-sm text-red-400 hover:text-red-500">
-                Remove Image
-              </button>
-            }
-          </div>
+            {/* Object Image Uploader */}
+            <div>
+                <label htmlFor="object-file-upload" className="block text-sm font-medium text-gray-300 mb-2">Object to Find (Optional)</label>
+                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-600 border-dashed rounded-md">
+                <div className="space-y-1 text-center">
+                    {objectImagePreview ? (
+                    <img src={objectImagePreview} alt="Object Preview" className="mx-auto h-48 w-auto rounded-md object-contain" />
+                    ) : (
+                    <>
+                        <UploadIcon />
+                        <div className="flex text-sm text-gray-400">
+                        <label htmlFor="object-file-upload" className="relative cursor-pointer bg-gray-800 rounded-md font-medium text-blue-400 hover:text-blue-500 focus-within:outline-none">
+                            <span>Upload an object</span>
+                            <input id="object-file-upload" name="object-file-upload" type="file" className="sr-only" accept="image/*" onChange={handleObjectFileChange} />
+                        </label>
+                        </div>
+                        <p className="text-xs text-gray-500">Upload an image of an object</p>
+                    </>
+                    )}
+                </div>
+                </div>
+                {objectImagePreview && 
+                <button onClick={() => { setObjectImageFile(null); setObjectImagePreview(null); }} className="mt-2 text-sm text-red-400 hover:text-red-500">
+                    Remove Object Image
+                </button>
+                }
+            </div>
+        </div>
 
-          <div>
+        <div className="mt-6">
             <label htmlFor="prompt" className="block text-sm font-medium text-gray-300 mb-2">Contextual Prompt</label>
             <textarea
-              id="prompt"
-              rows={4}
-              className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-gray-200 focus:ring-blue-500 focus:border-blue-500"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g., What is the main subject of this image?"
+                id="prompt"
+                rows={4}
+                className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g., What is the main subject of this image?"
             />
             <button
-              onClick={handleAnalyze}
-              disabled={isLoading || !file}
-              className="mt-4 w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors"
+                onClick={handleAnalyze}
+                disabled={isLoading || !file}
+                className="mt-4 w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors"
             >
-              {isLoading ? 'Analyzing...' : 'Analyze Image'}
+                {isLoading ? 'Analyzing...' : 'Analyze Image'}
             </button>
-          </div>
-        </div>
-        
-        <div className="mt-6">
-          <label htmlFor="objects-to-detect" className="block text-sm font-medium text-gray-300 mb-2">Object Detection (Optional)</label>
-          <textarea
-            id="objects-to-detect"
-            rows={2}
-            className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-gray-200 focus:ring-blue-500 focus:border-blue-500"
-            value={objectsToDetect}
-            onChange={(e) => setObjectsToDetect(e.target.value)}
-            placeholder="Enter objects to find, separated by commas (e.g., a blue shirt, a stop sign)"
-            disabled={isLoading}
-          />
         </div>
 
         {error && <Alert message={error} onClose={() => setError('')} />}
@@ -241,8 +287,6 @@ const ImageAnalysis: React.FC = () => {
                       alt="Analysis subject" 
                       className="max-w-full h-auto rounded-md block"
                       onLoad={(e) => {
-                          // Deferring the dimension measurement slightly ensures the browser has
-                          // completed its layout calculations, leading to more accurate box placement.
                           setTimeout(() => {
                             if (e.currentTarget) {
                               setImageDimensions({ 
