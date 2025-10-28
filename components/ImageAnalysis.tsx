@@ -4,6 +4,7 @@ import { analyzeImage } from '../services/geminiService';
 import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
 import { UploadIcon } from './icons/Icons';
+import Alert from './Alert';
 
 const ImageAnalysis: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('Describe this image in detail. If there are people, describe their expressions. If there is text, transcribe it.');
@@ -161,7 +162,7 @@ const ImageAnalysis: React.FC = () => {
           />
         </div>
 
-        {error && <p className="text-red-400 mt-4">{error}</p>}
+        {error && <Alert message={error} onClose={() => setError('')} />}
         
         {(isLoading || analysis) && (
           <div className="mt-6">

@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import type { AspectRatio } from '../types';
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import type { AspectRatio, MapsSearchResponse, GroundingChunk, PlaceWithCoords, GroundingSearchResponse, VideoAspectRatio } from '../types';
 
 if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
@@ -63,7 +63,9 @@ export async function deepThought(prompt: string): Promise<string> {
 
 export async function generateImage(prompt: string, aspectRatio: AspectRatio): Promise<string | null> {
     try {
-        const response = await ai.models.generateImages({
+        // Per guidelines, create a new instance for models that require a user-selected key.
+        const imageAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await imageAI.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: prompt,
             config: {
@@ -80,6 +82,124 @@ export async function generateImage(prompt: string, aspectRatio: AspectRatio): P
         return null;
     } catch(error) {
         console.error("Error generating image:", error);
-        return null;
+        // Rethrow the error to be caught by the component
+        if (error instanceof Error) {
+            throw new Error(error.message);
+        }
+        throw new Error("An unknown error occurred during image generation.");
     }
+}
+
+export async function mapsSearch(prompt: string, location?: { latitude: number; longitude: number }): Promise<MapsSearchResponse> {
+    try {
+        // FIX: `toolConfig` must be a property of the `config` object.
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                tools: [{ googleMaps: {} }],
+                toolConfig: location ? {
+                    retrievalConfig: {
+                        latLng: location
+                    }
+                } : undefined,
+            },
+        });
+
+        const text = response.text;
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [];
+        
+        return { text, sources };
+
+    } catch(error) {
+        console.error("Error in Maps Search:", error);
+        throw new Error("An error occurred during the Maps search. Please try again.");
+    }
+}
+
+export async function groundingSearch(prompt: string): Promise<GroundingSearchResponse> {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            },
+        });
+
+        const text = response.text;
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks as GroundingChunk[] || [];
+        
+        return { text, sources };
+
+    } catch(error) {
+        console.error("Error in Grounded Search:", error);
+        throw new Error("An error occurred during the search. Please try again.");
+    }
+}
+
+
+export async function getCoordinatesForPlaces(placeTitles: string[]): Promise<PlaceWithCoords[]> {
+    if (placeTitles.length === 0) {
+        return [];
+    }
+    try {
+        const prompt = `Provide the latitude and longitude for the following places: ${placeTitles.join(', ')}.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING },
+                            latitude: { type: Type.NUMBER },
+                            longitude: { type: Type.NUMBER },
+                        },
+                        required: ["title", "latitude", "longitude"],
+                    },
+                },
+            },
+        });
+        
+        const jsonText = response.text.trim();
+        const parsedJson = JSON.parse(jsonText);
+        return parsedJson as PlaceWithCoords[];
+
+    } catch (error) {
+        console.error("Error getting coordinates:", error);
+        return []; // Return empty array on failure to avoid crashing the UI
+    }
+}
+
+export async function generateVideo(
+    prompt: string, 
+    aspectRatio: VideoAspectRatio, 
+    imageBase64?: string, 
+    mimeType?: string
+) {
+    // Per guidelines, create a new instance for Veo models to ensure the latest API key is used.
+    const videoAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const image = imageBase64 && mimeType ? { imageBytes: imageBase64, mimeType } : undefined;
+
+    return await videoAI.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt,
+        image,
+        config: {
+            numberOfVideos: 1,
+            resolution: '720p',
+            aspectRatio: aspectRatio,
+        },
+    });
+}
+
+export async function checkVideoOperationStatus(operation: any) {
+    // Per guidelines, create a new instance for Veo models.
+    const videoAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return await videoAI.operations.getVideosOperation({ operation });
 }

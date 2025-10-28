@@ -1,9 +1,10 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { generateImage } from '../services/geminiService';
 import Spinner from './Spinner';
 import ToolHeader from './ToolHeader';
 import type { AspectRatio } from '../types';
+import Alert from './Alert';
 
 const aspectRatios: { label: string; value: AspectRatio }[] = [
   { label: 'Square (1:1)', value: '1:1' },
@@ -19,6 +20,26 @@ const ImageGeneration: React.FC = () => {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [apiKeySelected, setApiKeySelected] = useState<boolean>(false);
+
+  const checkApiKey = useCallback(async () => {
+    if (window.aistudio && await window.aistudio.hasSelectedApiKey()) {
+        setApiKeySelected(true);
+    } else {
+        setApiKeySelected(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkApiKey();
+  }, [checkApiKey]);
+
+  const handleSelectKey = async () => {
+    if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setApiKeySelected(true);
+    }
+  };
 
   const handleSubmit = useCallback(async () => {
     if (!prompt.trim() || isLoading) return;
@@ -27,16 +48,47 @@ const ImageGeneration: React.FC = () => {
     setError('');
     setGeneratedImage(null);
 
-    const imageUrl = await generateImage(prompt, aspectRatio);
-    
-    if (imageUrl) {
-      setGeneratedImage(imageUrl);
-    } else {
-      setError('Failed to generate image. Please try a different prompt.');
+    try {
+      const imageUrl = await generateImage(prompt, aspectRatio);
+      if (imageUrl) {
+        setGeneratedImage(imageUrl);
+      } else {
+        throw new Error('The model did not return an image. Please try a different prompt.');
+      }
+    } catch (err: any) {
+        let errorMessage = 'Failed to generate image. Please try a different prompt.';
+        if (err.message.includes('API is only accessible to billed users') || err.message.includes('Requested entity was not found')) {
+            errorMessage = "API Key error. Please re-select your API key and try again.";
+            setApiKeySelected(false);
+        } else if (err.message) {
+            errorMessage = err.message;
+        }
+        setError(errorMessage);
+    } finally {
+        setIsLoading(false);
     }
-
-    setIsLoading(false);
   }, [prompt, aspectRatio, isLoading]);
+
+  if (!apiKeySelected) {
+    return (
+      <div className="max-w-3xl mx-auto text-center">
+        <ToolHeader 
+          title="Image Generation"
+          description="Create high-quality images from text prompts using the imagen-4.0 model."
+        />
+        <div className="bg-gray-800 p-8 rounded-lg">
+            <h3 className="text-xl font-semibold mb-4">API Key Required</h3>
+            <p className="text-gray-400 mb-6">
+                Image generation with Imagen requires you to select your own API key. Please ensure you have a valid key associated with a billing-enabled project.
+                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline ml-1">Learn about billing.</a>
+            </p>
+            <button onClick={handleSelectKey} className="bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">
+                Select API Key
+            </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -87,7 +139,7 @@ const ImageGeneration: React.FC = () => {
           {isLoading ? 'Generating...' : 'Generate Image'}
         </button>
 
-        {error && <p className="text-red-400 mt-4 text-center">{error}</p>}
+        {error && <Alert message={error} onClose={() => setError('')} />}
         
         <div className="mt-6">
           {isLoading && (

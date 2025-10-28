@@ -1,13 +1,16 @@
 
 import React, { useState } from 'react';
-import { ImageAnalysisIcon, QuickChatIcon, ChatBotIcon, DeepThoughtIcon, ImageGenIcon, GeminiLogoIcon, MenuIcon } from './components/icons/Icons';
+import { ImageAnalysisIcon, QuickChatIcon, ChatBotIcon, DeepThoughtIcon, ImageGenIcon, GeminiLogoIcon, MenuIcon, MapsIcon, SearchIcon, VideoIcon } from './components/icons/Icons';
 import ImageAnalysis from './components/ImageAnalysis';
 import QuickChat from './components/QuickChat';
 import ChatBot from './components/ChatBot';
 import DeepThought from './components/DeepThought';
 import ImageGeneration from './components/ImageGeneration';
+import MapsSearch from './components/MapsSearch';
+import GroundingSearch from './components/GroundingSearch';
+import VideoGeneration from './components/VideoGeneration';
 
-type Tool = 'analyze' | 'quick' | 'chat' | 'deep' | 'generate';
+type Tool = 'analyze' | 'quick' | 'chat' | 'deep' | 'generate' | 'maps' | 'grounding' | 'video';
 
 const toolDetails: Record<Tool, { icon: React.ReactElement; label: string }> = {
   analyze: { icon: <ImageAnalysisIcon />, label: 'Image Analysis' },
@@ -15,6 +18,9 @@ const toolDetails: Record<Tool, { icon: React.ReactElement; label: string }> = {
   chat: { icon: <ChatBotIcon />, label: 'Chat Bot' },
   deep: { icon: <DeepThoughtIcon />, label: 'Deep Thought' },
   generate: { icon: <ImageGenIcon />, label: 'Image Generation' },
+  video: { icon: <VideoIcon />, label: 'Video Generation' },
+  maps: { icon: <MapsIcon />, label: 'Maps Search' },
+  grounding: { icon: <SearchIcon />, label: 'Grounded Search' },
 };
 
 
@@ -34,6 +40,12 @@ const App: React.FC = () => {
         return <DeepThought />;
       case 'generate':
         return <ImageGeneration />;
+      case 'video':
+        return <VideoGeneration />;
+      case 'maps':
+        return <MapsSearch />;
+      case 'grounding':
+        return <GroundingSearch />;
       default:
         return <ImageAnalysis />;
     }
